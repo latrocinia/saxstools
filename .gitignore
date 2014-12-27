@@ -1,4 +1,7 @@
 env/
 build/
+test-cases/
 
 *.pyc
+*.c
+*.html
