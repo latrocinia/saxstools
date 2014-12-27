@@ -4,6 +4,33 @@ from .atompar import parameters
 from .libsaxstools import cross_term
 
 def saxs_curve(elements, coordinates, qstart=0.00, qend=0.33, steps=10):
+    """Calculates a SAXS scattering curve
+
+    Parameters
+    ----------
+    elements : array-like of characters
+        Scattering chemical element 
+
+    coordinates : array-like
+        Nx3 array containing the xyz-coordinates of each particle
+
+    qstart : float
+        Lowest q-value calculated
+
+    qend : float
+        Highest q-value calculated
+
+    steps : int
+        Number of q-points calculated
+
+    Returns
+    -------
+    q : array
+        Momentum transfer values
+
+    Iq : array
+        SAXS scattering intensity
+    """
 
     q = np.linspace(qstart, qend, num=steps, dtype=np.float64)
     Iq = np.zeros(q.size, dtype=np.float64)
