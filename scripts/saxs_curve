@@ -1,0 +1,18 @@
+#! /home/gydo/Github/env/bin/python
+from __future__ import print_function
+from argparse import ArgumentParser
+import logging
+
+from saxstools import parse_pdb, saxs_curve
+
+
+p = ArgumentParser()
+p.add_argument('pdb')
+
+args = p.parse_args()
+
+elements, coordinates = parse_pdb(args.pdb)
+
+q, Iq = saxs_curve(elements, coordinates)
+
+
