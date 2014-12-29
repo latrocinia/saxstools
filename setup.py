@@ -6,7 +6,7 @@ from Cython.Build import cythonize
 ext_modules = [Extension("saxstools/libsaxstools",
         ["src/libsaxstools.pyx"])]
 
-#scripts = ['scripts/powerfit', 'scripts/pdb2volume']
+scripts = ['scripts/saxs_curve']
 #package_data = {'saxs-tools': ['data/*.npy', 'cl_kernels.cl']}
 
 setup(name="saxstools",
@@ -18,6 +18,6 @@ setup(name="saxstools",
       cmdclass = {'build_ext': build_ext},
       ext_modules = cythonize(ext_modules),
       #package_data = package_data,
-      #scripts=scripts,
+      scripts=scripts,
       requires=['numpy', 'scipy', 'cython'],
     )
