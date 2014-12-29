@@ -10,8 +10,8 @@ def cross_term(np.ndarray[np.int32_t, ndim=1] ie,
                np.ndarray[np.float64_t, ndim=2] coor, 
                np.ndarray[np.float64_t, ndim=3] fifj2,
                np.ndarray[np.float64_t, ndim=1] q,
-               np.ndarray[np.float64_t, ndim=1] Iq):
-    """Calculates the second term"""
+               np.ndarray[np.float64_t, ndim=1] out):
+    """Calculates the cross term"""
 
     cdef unsigned int n, m, i, j, qn
     cdef double qrij, rij
@@ -29,4 +29,4 @@ def cross_term(np.ndarray[np.int32_t, ndim=1] ie,
             for m in range(qn):
 
                 qrij = q[m]*rij
-                Iq[m] += fifj2[ie[i], ie[j], m]*sin(qrij)/(qrij)
+                out[m] += fifj2[ie[i], ie[j], m]*sin(qrij)/(qrij)

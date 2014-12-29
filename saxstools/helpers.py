@@ -1,3 +1,5 @@
+from numpy import loadtxt
+
 def parse_pdb(pdbfile, hydrogen=False):
     """Simple PDB-file parser to extract elements and coordinates."""
 
@@ -27,3 +29,9 @@ def parse_pdb(pdbfile, hydrogen=False):
             coordinates.append([x, y, z])
 
     return elements, coordinates
+
+def parse_saxsdata(infile):
+    q, Iq = loadtxt(infile, comments='#', unpack=True, usecols=(0, 1))
+
+    return q, Iq
+

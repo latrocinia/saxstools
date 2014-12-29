@@ -1,18 +1,44 @@
 #! /home/gydo/Github/env/bin/python
 from __future__ import print_function
-from argparse import ArgumentParser
+from argparse import ArgumentParser, FileType
+from sys import stdout
 import logging
 
-from saxstools import parse_pdb, saxs_curve
+from numpy import linspace, float64
+
+from saxstools import parse_pdb, saxs_curve, parse_saxsdata
+
+def parse_args():
+    p = ArgumentParser()
+    p.add_argument('pdb')
+
+    p.add_argument('-o', '--out', dest='out', type=FileType('w'), default=stdout)
+    p.add_argument('-f', '--fit', dest='fit', type=FileType('r'), default=None)
+
+    args = p.parse_args()
+
+    return args
 
 
-p = ArgumentParser()
-p.add_argument('pdb')
+args = parse_args()
 
-args = p.parse_args()
+if args.fit is None:
+    q = linspace(0.01, 0.5, 10, endpoint=True, dtype=float64)
+else:
+    q, Iq_target = parse_saxsdata(args.fit)
 
 elements, coordinates = parse_pdb(args.pdb)
+Iq = saxs_curve(elements, coordinates, q)
 
-q, Iq = saxs_curve(elements, coordinates)
+if args.fit is not None:
+    # scale the calculated intensity values
+    sf = sum(Iq*Iq_target)/sum(Iq**2)
+    Iq *= sf
 
+# write output to file
+if args.out is not None:
+    args.out.write('#{:>6s} {:>18s}\n'.format('q', 'I(q)'))
 
+line = '{:>7.5f} {:>18.8f}\n'
+for i, j in zip(q, Iq):
+    args.out.write(line.format(i, j))
