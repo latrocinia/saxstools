@@ -3,7 +3,7 @@ import numpy as np
 from .atompar import parameters
 from .libsaxstools import cross_term
 
-def saxs_curve(elements, coordinates, q):
+def saxs_curve(elements, coordinates, q, out=None):
     """Calculates a SAXS scattering curve
 
     Parameters
@@ -19,42 +19,79 @@ def saxs_curve(elements, coordinates, q):
 
     Returns
     -------
-    Iq : array
+    out : array
         SAXS scattering intensity
     """
 
-    Iq = np.zeros(q.size, dtype=np.float64)
+    if out is None:
+        out = np.zeros(q.size, dtype=np.float64)
 
     # Scattering curve is given by
     # I(q) = SUM(fi*fi) + 2*SUM(SUM(fi*fj*sin(q*rij)/rij))
-    first_term(elements, coordinates, q, Iq)
-    second_term(elements, coordinates, q, Iq)
+    first_term(q, elements, coordinates, out)
+    second_term(q, elements, coordinates, out)
 
-    return Iq
+    return out
 
-def first_term(elements, coordinates, q, out=None):
 
-    return_out = False
+def first_term(q, elements, coordinates, out=None):
+
     if out is None:
         out = np.zeros_like(q)
-        return_out = True
 
     # calculate the first squared term taking into account the solvent displacement
-    unique_elements = list(set(elements))
-    n = len(unique_elements)
+    unique_elements = np.unique(elements)
     for element in unique_elements:
 
         sf = scattering_factor(element, q)
-        solv_sf = solv_scattering_factor(q, rvdw=parameters[element]['rvdW'])
+        solv_sf = solv_scattering_factor(q, parameters[element]['rvdW'])
         tot_sf = sf - solv_sf
 
-        n = elements.count(element)
-        out += n*(tot_sf)**2.0
+        n = (np.asarray(elements) == element).sum()
+        out += n * (tot_sf)**2.0
 
-    if return_out:
-        return out
+    return out
 
-def second_term(elements, coordinates, q, out=None):
+
+def dfifj_lookup_table(q, elements1, elements2):
+
+    u_elements1, ind1 = np.unique(elements1, return_inverse=True)
+    u_elements2, ind2 = np.unique(elements2, return_inverse=True)
+
+    ni = u_elements1.size
+    nj = u_elements2.size
+    dfifj = np.zeros((ni, nj, q.size), dtype=np.float64)
+    for i, element1 in enumerate(u_elements1):
+
+        tot_sf1 = scattering_factor(element1, q) - \
+                solv_scattering_factor(q, parameters[element1]['rvdW'])
+
+        for j, element2 in enumerate(u_elements2):
+
+            dfifj[i, j, :] = 2 * tot_sf1 * (scattering_factor(element2, q) -\
+                    solv_scattering_factor(q, parameters[element2]['rvdW']))
+
+    return dfifj, ind1, ind2
+
+
+def cross_scattering(q, elements1, xyz1, elements2, xyz2, out=None, dfifj_table=None):
+
+    if out is None:
+        out = np.zeros_like(q)
+    
+    if dfifj_table is None:
+        dfifj, ind1, ind2 = dfifj_lookup_table(q, elements1, elements2)
+    else:
+        ind1 = elements1
+        ind2 = elements2
+        dfifj, ind1, ind2 = dfifj_table
+    
+    _cross_scattering(q, ind1, xyz1, ind2, xyz2, out)
+
+    return out
+
+
+def second_term(q, elements, coordinates, out=None):
 
     unique_elements = list(set(elements))
 
@@ -71,13 +108,13 @@ def second_term(elements, coordinates, q, out=None):
     for i, element in enumerate(unique_elements):
 
         sf = scattering_factor(element, q)
-        solv_sf = solv_scattering_factor(q, rvdw=parameters[element]['rvdW'])
+        solv_sf = solv_scattering_factor(q, parameters[element]['rvdW'])
         tot_sf = sf - solv_sf
 
         for j, element2 in enumerate(unique_elements):
 
             sf2 = scattering_factor(element2, q)
-            solv_sf2 = solv_scattering_factor(q, rvdw=parameters[element2]['rvdW'])
+            solv_sf2 = solv_scattering_factor(q, parameters[element2]['rvdW'])
             tot_sf2 = sf - solv_sf
 
             fifj[i, j, :] = tot_sf*tot_sf2
@@ -99,16 +136,26 @@ def scattering_factor(e, q):
     """Returns the scattering amplitudes over a qrange"""
 
     p = parameters
-    tmp = (q/(4*np.pi))**2
-    sf = p[e]['a1']*np.exp(-p[e]['b1']*tmp) +\
-         p[e]['a2']*np.exp(-p[e]['b2']*tmp) +\
-         p[e]['a3']*np.exp(-p[e]['b3']*tmp) +\
-         p[e]['a4']*np.exp(-p[e]['b4']*tmp) +\
-         p[e]['c']
+    sf = np.zeros(q.size, dtype=np.float64)
+
+    ind_small_angle = q < 2.0
+    ind_high_angle = q >= 2.0
+
+    tmp = (q[ind_small_angle]/(4*np.pi))**2
+    sf[ind_small_angle] = p[e]['a1']*np.exp(-p[e]['b1']*tmp) +\
+            p[e]['a2']*np.exp(-p[e]['b2']*tmp) +\
+            p[e]['a3']*np.exp(-p[e]['b3']*tmp) +\
+            p[e]['a4']*np.exp(-p[e]['b4']*tmp) +\
+            p[e]['c']
+
+    sf[ind_high_angle] = np.exp(p[e]['ha0']) *\
+            np.exp(p[e]['ha1'] * q) *\
+            np.exp(p[e]['ha2'] * q**2) *\
+            np.exp(p[e]['ha3'] * q**3)
 
     return sf
 
-def solv_scattering_factor(q, rvdw=None, rho=0.334):
+def solv_scattering_factor(q, rvdw, rho=0.334):
     """Returns the scattering factor of displaced solvent
 
     Parameters
