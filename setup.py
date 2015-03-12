@@ -2,12 +2,15 @@ from distutils.core import setup
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
 from Cython.Build import cythonize
+import os.path
 
-ext_modules = [Extension("saxstools/libsaxstools",
-        ["src/libsaxstools.pyx"])]
+ext_modules = [Extension("saxstools.libsaxstools",
+        [os.path.join('src', 'libsaxstools.pyx')])]
 
-scripts = ['scripts/saxs_curve']
-#package_data = {'saxs-tools': ['data/*.npy', 'cl_kernels.cl']}
+scripts = [os.path.join('scripts', 'saxs_curve')]
+
+package_data = {'saxstools': [os.path.join('data', '*.npy')],
+                }
 
 setup(name="saxstools",
       version='0.0.0',
@@ -17,7 +20,7 @@ setup(name="saxstools",
       packages=['saxstools'],
       cmdclass = {'build_ext': build_ext},
       ext_modules = cythonize(ext_modules),
-      #package_data = package_data,
+      package_data = package_data,
       scripts=scripts,
       requires=['numpy', 'scipy', 'cython'],
     )
