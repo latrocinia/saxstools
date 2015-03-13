@@ -3,11 +3,12 @@ from __future__ import print_function
 from argparse import ArgumentParser, FileType
 from sys import stdout
 import logging
+from time import time
 
 from numpy import linspace, float64
-import numpy as np
 
-from saxstools import parse_pdb, saxs_curve, parse_saxsdata
+from saxstools.helpers import parse_pdb, parse_saxsdata, coarse_grain
+from saxstools.saxs_curve import scattering_curve
 
 def parse_args():
     p = ArgumentParser()
@@ -15,31 +16,47 @@ def parse_args():
 
     p.add_argument('-o', '--out', dest='out', type=FileType('w'), default=stdout)
     p.add_argument('-f', '--fit', dest='fit', type=FileType('r'), default=None)
+    p.add_argument('-cg', '--coarse-grain', dest='cg', action='store_true')
+    p.add_argument('-bpr', '--beads-per-residue', dest='bpr', type=int, 
+            default=2, choices=[1, 2])
+    p.add_argument('-n', '--num', dest='num', type=int, default=11)
 
     args = p.parse_args()
 
     return args
 
+def main():
+    args = parse_args()
+    time0 = time()
 
-args = parse_args()
+    if args.fit is None:
+        q = linspace(0.00, 0.5, args.num, endpoint=True, dtype=float64)
+    else:
+        q, Iq_target = parse_saxsdata(args.fit)
 
-if args.fit is None:
-    q = linspace(0.00, 0.5, 10, endpoint=True, dtype=float64)
-else:
-    q, Iq_target = parse_saxsdata(args.fit)
+    if args.cg:
+        from disvis import PDB
+        elements, coordinates = coarse_grain(PDB.fromfile(args.pdb), bpr=args.bpr)
+    else:
+        elements, coordinates = parse_pdb(args.pdb)
 
-elements, coordinates = parse_pdb(args.pdb)
-Iq = saxs_curve(elements, coordinates, q)
+    Iq = scattering_curve(q, elements, coordinates, bpr=args.bpr)
 
-if args.fit is not None:
-    # scale the calculated intensity values
-    sf = sum(Iq*Iq_target)/sum(Iq**2)
-    Iq *= sf
+    if args.fit is not None:
+        # scale the calculated intensity values
+        sf = sum(Iq*Iq_target)/sum(Iq**2)
+        Iq *= sf
 
-# write output to file
-if args.out is not None:
-    args.out.write('#{:>6s} {:>18s}\n'.format('q', 'I(q)'))
+    # write output to file
+    if args.out is not None:
+        args.out.write('#{:>6s} {:>18s}\n'.format('q', 'I(q)'))
 
-line = '{:>7.5f} {:>18.8f}\n'
-for i, j in zip(q, Iq):
-    args.out.write(line.format(i, j))
+    line = '{:>7.5f} {:>18.8f}\n'
+    for i, j in zip(q, Iq):
+        args.out.write(line.format(i, j))
+
+    #m, s = divmod(int(round(time() - time0)), 60)
+    #args.out.write('Total time: {:d}m {:d}s'.format(m, s))
+
+if __name__=='__main__':
+    main()

@@ -1,4 +1,4 @@
-from numpy import loadtxt
+from numpy import loadtxt, asarray, float64, unique
 
 def parse_pdb(pdbfile, hydrogen=False):
     """Simple PDB-file parser to extract elements and coordinates."""
@@ -18,7 +18,7 @@ def parse_pdb(pdbfile, hydrogen=False):
                 element = line[12:16].strip()[0]
 
             # no hydrogens
-            if element == 'H' and hydrogen:
+            if element == 'H' and not hydrogen:
                 continue
 
             x = float(line[30:38])
@@ -28,10 +28,30 @@ def parse_pdb(pdbfile, hydrogen=False):
             elements.append(element)
             coordinates.append([x, y, z])
 
-    return elements, coordinates
+    return elements, asarray(coordinates, dtype=float64)
 
 def parse_saxsdata(infile):
     q, Iq = loadtxt(infile, comments='#', unpack=True, usecols=(0, 1))
 
     return q, Iq
 
+def coarse_grain(structure, bpr=2):
+
+    beads = []
+    center_of_mass = []
+    for c in structure.chain_list:
+        chain = structure.select('chain', c)
+        for resi in unique(chain.data['resi']):
+            residue = chain.select('resi', resi)
+            resn = residue.sequence[0]
+            com = residue.center_of_mass
+
+            # ALA and GLY only have one bead
+            if bpr == 2 and resn not in ('ALA', 'GLY'):
+                center_of_mass.append(com)
+                beads.append('BB')
+
+            center_of_mass.append(com)
+            beads.append(resn)
+
+    return beads, asarray(center_of_mass, dtype=float64)

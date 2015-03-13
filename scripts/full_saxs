@@ -1,0 +1,10 @@
+#! env/bin/python
+
+from disvis import PDB
+from saxstools.fullsaxs import FullSAXS
+
+
+fs = FullSAXS()
+
+fs.receptor = PDB.fromfile(sys.argv[1])
+

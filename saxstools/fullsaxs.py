@@ -17,20 +17,22 @@ except ImportError:
 
 
 from disvis import volume
-from .points import dilate_points
-from .libdisvis import (rotate_image3d, dilate_points_add, longest_distance)
-from saxstools import saxs_curve
+from disvis.points import dilate_points
+from disvis.libdisvis import (rotate_image3d, dilate_points_add, longest_distance)
+from saxstools.saxs_curve import scattering_curve
+from saxstools.helpers import coarse_grain
+
         
 try:
     import pyopencl as cl
     import pyopencl.array as cl_array
     import disvis.pyclfft
-    from .kernels import Kernels
+    from disvis.kernels import Kernels
     from disvis import pyclfft
 except ImportError:
     pass
 
-class SAXSer(object):
+class FullSAXS(object):
 
     def __init__(self):
         # parameters to be defined
@@ -45,12 +47,15 @@ class SAXSer(object):
         self.max_clash = 100
         self.min_interaction = 300
 
+        self.coarse_grain = True
+        self.beads_per_residue = 2
+
         # CPU or GPU
         self._queue = None
 
         # unchangeable
         self._data = {}
-        self._targetIq = None
+        self._Iq = None
         self._q = None
 
     @property
@@ -72,6 +77,7 @@ class SAXSer(object):
     @property
     def rotations(self):
         return self._rotations
+
     @rotations.setter
     def rotations(self, rotations):
         rotmat = np.asarray(rotations, dtype=np.float64)
@@ -84,6 +90,7 @@ class SAXSer(object):
     @property
     def weights(self):
         return self._weights
+
     @weights.setter
     def weights(self, weights):
         self._weights = weights
@@ -91,6 +98,7 @@ class SAXSer(object):
     @property
     def interaction_radius(self):
         return self._interaction_radius
+
     @interaction_radius.setter
     def interaction_radius(self, radius):
         if radius <= 0:
@@ -118,6 +126,7 @@ class SAXSer(object):
     @property
     def min_interaction(self):
         return self._min_interaction
+
     @min_interaction.setter
     def min_interaction(self, min_interaction):
         if min_interaction < 1:
@@ -127,6 +136,7 @@ class SAXSer(object):
     @property
     def queue(self):
         return self._queue
+
     @queue.setter
     def queue(self, queue):
         self._queue = queue
@@ -142,8 +152,8 @@ class SAXSer(object):
 
 
     @saxsdata.setter
-    def saxsdata(self, data):
-        self._q, self.Iq = data.T
+    def saxsdata(self, q, Iq):
+        self._q, self._Iq = q, Iq
 
 
     def _initialize(self):
@@ -189,14 +199,24 @@ class SAXSer(object):
 
         # SAXS data
         d['targetIq'] = self._Iq
-        d['Iq'] = saxs_curve.saxs_curve(self.receptor.elements, self.receptor.coor, self._q)
-        d['Iq'] += saxs_curve.saxs_curve(self.ligand.elements, self.ligand.coor, self._q)
-        d['dfifj'], d['ind1'], d['ind2'] = saxs_curve.dfifj_lookup_table(q, self.receptor.elements, self.ligand.elements)
-        d['xyz1'] = self.receptor.coor
-        d['xyz2'] = self.ligand.coor - self.ligand.center + d['origin']
 
-        d['chi'] = np.zeros_like(d['rcore'], dtype=np.float64)
-        d['best_chi'] = np.zeros_like(d['chi'])
+        if self.coarse_grain:
+            e1, xyz1 = coarse_grain(self.receptor, bpr=self.beads_per_residue)
+            e2, xyz2 = coarse_grain(self.ligand, bpr=self.beads_per_residue)
+
+        else:
+            e1, xyz1 = self.receptor.elements, self.receptor.coor
+            e2, xyz2 = self.ligand.elements, self.ligand.coor
+
+        d['base_Iq'] = scattering_curve(self._q, e1, xyz1, bpr=self.beads_per_residue)
+        d['base_Iq'] += scattering_curve(self._q, e2, xyz2, bpr=self.beads_per_residue)
+
+        d['fifj'], d['rind'], d['lind'] = saxs_curve.create_fifj_lookup_table(q, e1, e2, bpr=self.beads_per_residue)
+        d['rxyz'] = self.receptor.coor
+        d['lxyz'] = self.ligand.coor - self.ligand.center
+
+        d['chi2'] = np.zeros_like(d['rcore'], dtype=np.float64)
+        d['best_chi2'] = np.zeros_like(d['chi2'])
 
 
     def search(self):
@@ -247,17 +267,22 @@ class SAXSer(object):
         c['vlength'] = int(np.linalg.norm(self.ligand.coor - \
                 self.ligand.center, axis=1).max() + \
                 self.interaction_radius + 1.5)/self.voxelspacing
+        c['origin'] = d['origin']
 
+        # SAXS arrays
         c['targetIq'] = d['targetIq']
-        c['Iq'] = d['Iq']
-        c['dfifj'] = d['dfifj']
-        c['ind1'] = d['ind1']
-        c['ind2'] = d['ind2']
-        c['xyz1'] = d['xyz1']
-        c['xyz2'] = d['xyz2']
+        c['base_Iq'] = d['base_Iq']
+        c['fifj'] = d['fifj']
+        c['rind'] = d['rind']
+        c['lind'] = d['lind']
+        c['rxyz'] = d['rxyz']
+        c['lxyz2'] = d['lxyz']
 
-        c['chi'] = d['chi']
-        c['best_chi'] = d['best_chi']
+        c['chi2'] = d['chi2']
+        c['best_chi2'] = d['best_chi2']
+
+        c['Iq'] = np.zeros_like(c['targetIq'])
+        c['tmplxyz'] = np.zeros_like(c['lxyz'])
 
     def _cpu_search(self):
 
@@ -279,10 +304,11 @@ class SAXSer(object):
                            c['interspace'])
 
 
-            c['chi'].fill(0)
-            libsaxstools.calc_chi(c['interspace'], c['q'], c['Iq'], 
-                    c['ind1'], c['xyz1'], c['ind2'], (np.mat(c['rotmat'][n])*np.mat(c['xyz2']).T).T, 
-                    self.voxelspacing, c['dfifj'], c['targetIq'], c['chi'])
+            c['chi2'].fill(0)
+            calc_chi(c['interspace'], c['q'], c['base_Iq'], 
+                    c['rind'], c['rxyz'], c['lind2'], (np.mat(c['rotmat'][n])*np.mat(c['lxyz']).T).T, 
+                    c['origin'], self.voxelspacing, 
+                    c['fifj'], c['targetIq'], c['chi2'])
 
             if _stdout.isatty():
                 self._print_progress(n, c['nrot'], time0)
