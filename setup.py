@@ -3,9 +3,12 @@ from distutils.extension import Extension
 from Cython.Distutils import build_ext
 from Cython.Build import cythonize
 import os.path
+import numpy
 
 ext_modules = [Extension("saxstools.libsaxstools",
-        [os.path.join('src', 'libsaxstools.pyx')])]
+        [os.path.join('src', 'libsaxstools.pyx')],
+        include_dirs = [numpy.get_include()],
+	)]
 
 scripts = [os.path.join('scripts', 'saxs_curve')]
 
