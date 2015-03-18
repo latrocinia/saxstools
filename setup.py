@@ -2,17 +2,18 @@ from distutils.core import setup
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
 from Cython.Build import cythonize
+from os.path import join
 import os.path
 import numpy
 
 ext_modules = [Extension("saxstools.libsaxstools",
-        [os.path.join('src', 'libsaxstools.pyx')],
+        [join('src', 'libsaxstools.pyx')],
         include_dirs = [numpy.get_include()],
 	)]
 
-scripts = [os.path.join('scripts', 'saxs_curve')]
+scripts = [join('scripts', 'saxs_curve'), join('scripts', 'full_saxs')]
 
-package_data = {'saxstools': [os.path.join('data', '*.npy')],
+package_data = {'saxstools': [join('data', '*.npy')],
                 }
 
 setup(name="saxstools",

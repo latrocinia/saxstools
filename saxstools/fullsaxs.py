@@ -19,8 +19,9 @@ except ImportError:
 from disvis import volume
 from disvis.points import dilate_points
 from disvis.libdisvis import (rotate_image3d, dilate_points_add, longest_distance)
-from saxstools.saxs_curve import scattering_curve
+from saxstools.saxs_curve import scattering_curve, create_fifj_lookup_table
 from saxstools.helpers import coarse_grain
+from saxstools.libsaxstools import calc_chi2
 
         
 try:
@@ -55,8 +56,9 @@ class FullSAXS(object):
 
         # unchangeable
         self._data = {}
-        self._Iq = None
         self._q = None
+        self._Iq = None
+        self._sq = None
 
     @property
     def receptor(self):
@@ -148,12 +150,12 @@ class FullSAXS(object):
 
     @property
     def saxsdata(self):
-        return self._q, self._Iq
+        return self._q, self._Iq, self._sq
 
 
     @saxsdata.setter
-    def saxsdata(self, q, Iq):
-        self._q, self._Iq = q, Iq
+    def saxsdata(self, saxsdata):
+        self._q, self._Iq, self._sq = saxsdata
 
 
     def _initialize(self):
@@ -182,7 +184,7 @@ class FullSAXS(object):
                 shape, self.voxelspacing)
 
         # keep track of some data for later calculations
-        d['origin'] = d['rcore'].origin
+        d['origin'] = np.asarray(d['rcore'].origin, dtype=np.float64)
         d['shape'] = d['rcore'].shape
         d['start'] = d['rcore'].start
         d['nrot'] = self.rotations.shape[0]
@@ -198,7 +200,9 @@ class FullSAXS(object):
         d['min_interaction'] = self.min_interaction/self.voxelspacing**3
 
         # SAXS data
+	d['q'] = self._q
         d['targetIq'] = self._Iq
+	d['sq'] = self._sq
 
         if self.coarse_grain:
             e1, xyz1 = coarse_grain(self.receptor, bpr=self.beads_per_residue)
@@ -211,11 +215,11 @@ class FullSAXS(object):
         d['base_Iq'] = scattering_curve(self._q, e1, xyz1, bpr=self.beads_per_residue)
         d['base_Iq'] += scattering_curve(self._q, e2, xyz2, bpr=self.beads_per_residue)
 
-        d['fifj'], d['rind'], d['lind'] = saxs_curve.create_fifj_lookup_table(q, e1, e2, bpr=self.beads_per_residue)
+        d['fifj'], d['rind'], d['lind'] = create_fifj_lookup_table(d['q'], e1, e2, bpr=self.beads_per_residue)
         d['rxyz'] = self.receptor.coor
         d['lxyz'] = self.ligand.coor - self.ligand.center
 
-        d['chi2'] = np.zeros_like(d['rcore'], dtype=np.float64)
+        d['chi2'] = np.zeros(d['rcore'].shape, dtype=np.float64)
         d['best_chi2'] = np.zeros_like(d['chi2'])
 
 
@@ -230,7 +234,11 @@ class FullSAXS(object):
 
         if _stdout.isatty():
             print()
-
+        
+        d = self.data
+        #ind = d['best_chi2'] > 0
+        #d['best_chi2'][ind] -= d['best_chi2'][ind].min()
+	return volume.Volume(d['best_chi2'], voxelspacing=self.voxelspacing, origin=d['origin'])
 
     def _cpu_init(self):
 
@@ -245,7 +253,7 @@ class FullSAXS(object):
         c['lsurf'] = np.zeros_like(c['rcore'])
         c['clashvol'] = np.zeros_like(c['rcore'])
         c['intervol'] = np.zeros_like(c['rcore'])
-        c['interspace'] = np.zeros_like(c['rcore'], dtype=np.int32)
+        c['interspace'] = np.zeros_like(c['rcore'], dtype=np.int64)
 
         # complex arrays
         c['ft_shape'] = list(d['shape'])
@@ -270,13 +278,15 @@ class FullSAXS(object):
         c['origin'] = d['origin']
 
         # SAXS arrays
+	c['q'] = d['q']
         c['targetIq'] = d['targetIq']
+	c['sq'] = d['sq']
         c['base_Iq'] = d['base_Iq']
         c['fifj'] = d['fifj']
         c['rind'] = d['rind']
         c['lind'] = d['lind']
         c['rxyz'] = d['rxyz']
-        c['lxyz2'] = d['lxyz']
+        c['lxyz'] = d['lxyz']
 
         c['chi2'] = d['chi2']
         c['best_chi2'] = d['best_chi2']
@@ -304,15 +314,18 @@ class FullSAXS(object):
                            c['interspace'])
 
 
+	    print('Number of complexes to analyze: ', c['interspace'].sum())
             c['chi2'].fill(0)
-            calc_chi(c['interspace'], c['q'], c['base_Iq'], 
-                    c['rind'], c['rxyz'], c['lind2'], (np.mat(c['rotmat'][n])*np.mat(c['lxyz']).T).T, 
+            calc_chi2(c['interspace'], c['q'], c['base_Iq'], 
+                    c['rind'], c['rxyz'], c['lind'], (np.mat(c['rotmat'][n])*np.mat(c['lxyz']).T).T, 
                     c['origin'], self.voxelspacing, 
-                    c['fifj'], c['targetIq'], c['chi2'])
+                    c['fifj'], c['targetIq'], c['sq'], c['chi2'])
 
+	    np.maximum(c['chi2'], c['best_chi2'], c['best_chi2'])
             if _stdout.isatty():
                 self._print_progress(n, c['nrot'], time0)
 
+        d['best_chi2'] = c['best_chi2']
 
     def _print_progress(self, n, total, time0):
         m = n + 1
@@ -322,6 +335,7 @@ class FullSAXS(object):
                 .format(m, total, pdone, 
                         int(t/pdone - t)))
         _stdout.flush()
+
 
     def _gpu_init(self):
 

@@ -1,10 +1,109 @@
 #! env/bin/python
+from __future__ import print_function
+from argparse import ArgumentParser
+from time import time
 
 from disvis import PDB
+from disvis.rotations import proportional_orientations, quat_to_rotmat
+from disvis.helpers import mkdir_p
+
 from saxstools.fullsaxs import FullSAXS
+from saxstools.helpers import parse_saxsdata
+
+def parse_args():
+
+    p = ArgumentParser()
+
+    p.add_argument('receptor', type=file,
+            help='PDB-file containing fixed chain.')
+
+    p.add_argument('ligand', type=file,
+            help='PDB-file containing scanning chain.')
+
+    p.add_argument('data', type=file,
+            help='File containing the SAXS data.')
+
+    p.add_argument('-a', '--angle', dest='angle', type=float, default=15,
+            help='Rotational sampling density in degrees. Default is 15 degrees.')
+
+    p.add_argument('-vs', '--voxelspacing', dest='voxelspacing',
+            type=float, default=1,
+            help='Voxel spacing of search grid in angstrom. Default is 1A.')
+
+    p.add_argument('-ir', '--interaction-radius',
+            dest='interaction_radius', type=float, default=3.0,
+            help='Radius of the interaction space for each atom in angstrom. '
+                 'Atoms are thus considered interacting if the distance is '
+                 'larger than the vdW radius and shorther than or equal to '
+                 'vdW + interaction_radius. Default is 3A.')
+
+    p.add_argument('-cv', '--max_clash',
+            dest='max_clash', type=float, default=200,
+            help='Maximum allowed volume of clashes. Increasing this '
+                 'number results in more allowed complexes. '
+                 'Default is 200 A^3.')
+
+    p.add_argument('-iv', '--min-interaction',
+            dest='min_interaction', type=float, default=300,
+            help='Minimal required interaction volume for a '
+                 'conformation to be considered a '
+                 'complex. Increasing this number results in a '
+                 'stricter counting of complexes. '
+                 'Default is 300 A^3.')
+
+    p.add_argument('-d', '--directory', dest='directory', type=str, default='.',
+            help='Directory where results are written to. '
+                 'Default is current directory.')
+
+    p.add_argument('-p', '--nproc', dest='nproc', type=int, default=1,
+            help='Number of processors used during search.')
+
+    p.add_argument('-g', '--gpu', dest='gpu', action='store_true',
+            help='Use GPU-acceleration for search. If not available '
+                 'the CPU-version will be used with the given number '
+                 'of processors.')
+
+    return p.parse_args()
+
+def run_fullsaxs(queue, receptor, ligand, rotmat, q, Iq, sq, args):
+
+    fs = FullSAXS()
+
+    fs.receptor = receptor
+    fs.ligand = ligand
+    fs.saxsdata = (q, Iq, sq)
+    fs.rotations = rotmat
+
+    fs.voxelspacing = args.voxelspacing
+    fs.interaction_radius = args.interaction_radius
+    fs.max_clash = args.max_clash
+    fs.min_interaction = args.min_interaction
+    fs.queue = queue
+
+    return fs.search()
+
+def main():
+    
+    args = parse_args()
+
+    time0 = time()
+    mkdir_p(args.directory)
+
+    receptor = PDB.fromfile(args.receptor)
+    ligand = PDB.fromfile(args.ligand)
+
+    quat, weights, a = proportional_orientations(args.angle)
+    rotmat = quat_to_rotmat(quat)
+
+    q, Iq, sq = parse_saxsdata(args.data)
+
+    queue = None
+    output = run_fullsaxs(queue, receptor, ligand, rotmat, q, Iq, sq, args)
+
+    output.tofile('chi2.mrc')
+
+    print('Time required for search: ', time() - time0)
 
 
-fs = FullSAXS()
-
-fs.receptor = PDB.fromfile(sys.argv[1])
-
+if __name__=='__main__':
+    main()

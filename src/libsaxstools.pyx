@@ -1,11 +1,9 @@
+# cython: profile=True, boundscheck=False, wraparound=False, cdivision=True
 import cython
 import numpy as np
 cimport numpy as np
 from libc.math cimport sin, sqrt
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.cdivision(True)
 def scattering_curve(np.ndarray[np.float64_t, ndim=1] q,
                      np.ndarray[np.int64_t, ndim=1] ind,
                      np.ndarray[np.float64_t, ndim=2] xyz,
@@ -34,9 +32,13 @@ def scattering_curve(np.ndarray[np.float64_t, ndim=1] q,
                 else:
                     out[k] += 2 * fifj[ind[i], ind[j], k] * sin(qrij)/qrij
     
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.cdivision(True)
+
+#cdef double dist(double* xyz1,
+#                 double* xyz2,
+#                 ):
+#    return sqrt((xyz1[0] - xyz2[0])**2 + (xyz1[1] - xyz2[1])**2 + (xyz1[2] - xyz2[2])**2)
+
+
 cdef void cross_term(np.ndarray[np.float64_t, ndim=1] q,
                np.ndarray[np.int64_t, ndim=1] ind1,
                np.ndarray[np.float64_t, ndim=2] xyz1,
@@ -52,6 +54,7 @@ cdef void cross_term(np.ndarray[np.float64_t, ndim=1] q,
     for i in range(ind1.shape[0]):
         for j in range(ind2.shape[0]):
             rij = sqrt((xyz1[i, 0] - xyz2[j, 0])**2 + (xyz1[i, 1] - xyz2[j, 1])**2 + (xyz1[i, 2] - xyz2[j, 2])**2)
+            #rij = dist(<double*> xyz1.data[i], <double*> xyz2.data[i])
 
             for k in range(q.shape[0]):
                 qrij = q[k] * rij
@@ -60,20 +63,18 @@ cdef void cross_term(np.ndarray[np.float64_t, ndim=1] q,
                 else:
                     out[k] += 2 * fifj[ind1[i], ind2[j], k] * sin(qrij)/qrij
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.cdivision(True)
-def calc_chi(np.ndarray[np.int32_t, ndim=3] interspace,
+def calc_chi2(np.ndarray[np.int64_t, ndim=3] interspace,
              np.ndarray[np.float64_t, ndim=1] q,
              np.ndarray[np.float64_t, ndim=1] Iq,
              np.ndarray[np.int64_t, ndim=1] rind,
              np.ndarray[np.float64_t, ndim=2] rxyz,
              np.ndarray[np.int64_t, ndim=1] lind,
              np.ndarray[np.float64_t, ndim=2] lxyz,
-             double origin,
+             np.ndarray[np.float64_t, ndim=1] origin,
              double voxelspacing,
              np.ndarray[np.float64_t, ndim=3] fifj,
              np.ndarray[np.float64_t, ndim=1] targetIq,
+             np.ndarray[np.float64_t, ndim=1] sq,
              np.ndarray[np.float64_t, ndim=3] chi2,
              ):
 
@@ -84,7 +85,11 @@ def calc_chi(np.ndarray[np.int32_t, ndim=3] interspace,
     cdef np.ndarray[np.float64_t, ndim=1] tmpIq = np.zeros(Iq.shape[0], dtype=np.float64)
 
     for z in range(chi2.shape[0]):
+
+        print z, ' / ', chi2.shape[0]
+
         for y in range(chi2.shape[1]):
+
             for x in range(chi2.shape[2]):
 
                 if interspace[z, y, x] == 0:
@@ -92,9 +97,9 @@ def calc_chi(np.ndarray[np.int32_t, ndim=3] interspace,
 
                 # move the coordinates of the ligand
                 for n in range(lxyz.shape[0]):
-                    tmplxyz[n, 0] = lxyz[n, 0] + x*voxelspacing + origin
-                    tmplxyz[n, 1] = lxyz[n, 1] + y*voxelspacing + origin
-                    tmplxyz[n, 2] = lxyz[n, 2] + z*voxelspacing + origin
+                    tmplxyz[n, 0] = lxyz[n, 0] + x*voxelspacing + origin[0]
+                    tmplxyz[n, 1] = lxyz[n, 1] + y*voxelspacing + origin[1]
+                    tmplxyz[n, 2] = lxyz[n, 2] + z*voxelspacing + origin[2]
 
                 # calculate the cross scattering
                 for n in range(q.shape[0]):
@@ -105,73 +110,12 @@ def calc_chi(np.ndarray[np.int32_t, ndim=3] interspace,
                 sumIqtargetIq = 0
                 sumIq2 = 0
                 for n in range(q.shape[0]):
-                    sumIqtargetIq += tmpIq[n] * targetIq[n]
-                    sumIq2 += tmpIq[n]*tmpIq[n]
+                    sumIqtargetIq += (tmpIq[n] * targetIq[n]) / sq[n]**2
+                    sumIq2 += (tmpIq[n] * tmpIq[n]) / sq[n]**2
                 fscale = sumIqtargetIq/sumIq2
 
                 # calculate a part of chi2 which is guaranteed to be bigger than 0 and the bigger the better
                 for n in range(q.shape[0]):
-                    chi2[z, y, x] -= tmpIq[n]*tmpIq[n] - 2*targetIq[n]*tmpIq[n]
+                    #chi2[z, y, x] -= (tmpIq[n]*tmpIq[n] - 2*targetIq[n]*tmpIq[n])/sq[n]**2
+                    chi2[z, y, x] += ((targetIq[n] - fscale*tmpIq[n])/sq[n])**2
                 chi2[z, y, x] /= q.shape[0]
-#
-#
-#@cython.boundscheck(False)
-#@cython.wraparound(False)
-#@cython.cdivision(True)
-#def cross_term(np.ndarray[np.int32_t, ndim=1] ie,
-#               np.ndarray[np.float64_t, ndim=2] coor,
-#               np.ndarray[np.float64_t, ndim=3] fifj2,
-#               np.ndarray[np.float64_t, ndim=1] q,
-#               np.ndarray[np.float64_t, ndim=1] out):
-#    """Calculates the cross term"""
-#
-#    cdef unsigned int n, m, i, j, qn
-#    cdef double qrij, rij
-#
-#    n = <int> len(ie)
-#    qn = <int> q.size
-#
-#    for i in range(n - 1):
-#        for j in range(i+1, n):
-#
-#            rij = sqrt((coor[i, 0] - coor[j,0])**2 +\
-#                  (coor[i,1] - coor[j,1])**2 +\
-#                  (coor[i,2] - coor[j,2])**2)
-#
-#            for m in range(qn):
-#
-#                qrij = q[m]*rij
-#                if qrij == 0:
-#                    out[m] += fifj2[ie[i], ie[j], m]
-#                else:
-#                    out[m] += fifj2[ie[i], ie[j], m]*sin(qrij)/(qrij)
-#
-#@cython.boundscheck(False)
-#@cython.wraparound(False)
-#@cython.cdivision(True)
-#def cross_scattering(np.ndarray[np.float64_t, ndim=1] q,
-#                     np.ndarray[np.int32_t, ndim=1] ind1,
-#                     np.ndarray[np.float64_t, ndim=2] xyz1,
-#                     np.ndarray[np.int32_t, ndim=1] ind2,
-#                     np.ndarray[np.float64_t, ndim=2] xyz2,
-#                     np.ndarray[np.float64_t, ndim=3] dfifj,
-#                     np.ndarray[np.float64_t, ndim=1] out):
-#    """Calculates the scattering between two sets"""
-#
-#    cdef unsigned int n, i, j
-#    cdef double qrij, rij
-#
-#    for i in range(ind1.size):
-#        for j in range(ind2.size):
-#
-#            rij = sqrt((xyz1[i, 0] - xyz2[j, 0])**2 +\
-#                  (xyz1[i,1] - xyz2[j, 1])**2 +\
-#                  (xyz1[i,2] - xyz2[j, 2])**2)
-#
-#            for n in range(q.size):
-#                qrij = q[n]*rij
-#                if qrij == 0:
-#                    out[n] += dfifj[ind1[i], ind2[j], n]
-#                else:
-#                    out[n] += dfifj[ind1[i], ind2[j], n]*sin(qrij)/(qrij)
-#
