@@ -1,4 +1,4 @@
-from numpy import loadtxt, asarray, float64, unique
+from numpy import loadtxt, asarray, float64, unique, ones
 
 
 def parse_pdb(pdbfile, hydrogen=False):
@@ -40,7 +40,7 @@ def parse_saxsdata(infile):
         raise IOError('File has no proper SAXS data.')
     elif data.shape[-1] == 2:
         q, Iq = data.T
-	sq = ones_like(Iq)
+	sq = ones(Iq.size, dtype=float64)
     else:
         q, Iq, sq = data.T
 
