@@ -1,5 +1,5 @@
 #! /home/gydo/Github/env/bin/python
-from __future__ import print_function
+from __future__ import print_function, division
 from argparse import ArgumentParser, FileType
 from sys import stdout
 import logging
@@ -46,6 +46,8 @@ def main():
         # scale the calculated intensity values
         sf = sum(Iq*Iq_target/sq**2)/sum(Iq**2/sq**2)
         Iq *= sf
+        chi2 = 1/q.size * sum(((Iq_target - Iq)/sq)**2)
+        args.out.write('# Chi2: {:.4f}\n'.format(chi2))
 
     # write output to file
     if args.out is not None:
