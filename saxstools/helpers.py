@@ -1,5 +1,6 @@
 from numpy import loadtxt, asarray, float64, unique
 
+
 def parse_pdb(pdbfile, hydrogen=False):
     """Simple PDB-file parser to extract elements and coordinates."""
 
@@ -30,10 +31,21 @@ def parse_pdb(pdbfile, hydrogen=False):
 
     return elements, asarray(coordinates, dtype=float64)
 
-def parse_saxsdata(infile):
-    q, Iq = loadtxt(infile, comments='#', unpack=True, usecols=(0, 1))
 
-    return q, Iq
+def parse_saxsdata(infile):
+
+    data = loadtxt(infile, comments='#')
+
+    if data.shape[-1] not in (2, 3):
+        raise IOError('File has no proper SAXS data.')
+    elif data.shape[-1] == 2:
+        q, Iq = data.T
+	sq = ones_like(Iq)
+    else:
+        q, Iq, sq = data.T
+
+    return q, Iq, sq
+
 
 def coarse_grain(structure, bpr=2):
 
