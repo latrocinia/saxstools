@@ -109,9 +109,9 @@ def calc_chi(np.ndarray[np.int32_t, ndim=3] interspace,
                     sumIq2 += tmpIq[n]*tmpIq[n]
                 fscale = sumIqtargetIq/sumIq2
 
-                # calculate chi2
+                # calculate a part of chi2 which is guaranteed to be bigger than 0 and the bigger the better
                 for n in range(q.shape[0]):
-                    chi2[z, y, x] += (targetIq[n] - tmpIq[n])**2
+                    chi2[z, y, x] -= tmpIq[n]*tmpIq[n] - 2*targetIq[n]*tmpIq[n]
                 chi2[z, y, x] /= q.shape[0]
 #
 #
