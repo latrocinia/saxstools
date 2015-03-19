@@ -216,8 +216,8 @@ class FullSAXS(object):
         d['base_Iq'] += scattering_curve(self._q, e2, xyz2, bpr=self.beads_per_residue)
 
         d['fifj'], d['rind'], d['lind'] = create_fifj_lookup_table(d['q'], e1, e2, bpr=self.beads_per_residue)
-        d['rxyz'] = self.receptor.coor
-        d['lxyz'] = self.ligand.coor - self.ligand.center
+        d['rxyz'] = xyz1
+        d['lxyz'] = xyz2 - self.ligand.center
 
         d['chi2'] = np.zeros(d['rcore'].shape, dtype=np.float64)
         d['best_chi2'] = np.zeros_like(d['chi2'])
@@ -236,8 +236,8 @@ class FullSAXS(object):
             print()
         
         d = self.data
-        #ind = d['best_chi2'] > 0
-        #d['best_chi2'][ind] -= d['best_chi2'][ind].min()
+        ind = d['best_chi2'] > 0
+        d['best_chi2'][ind] -= d['best_chi2'][ind].min()
 	return volume.Volume(d['best_chi2'], voxelspacing=self.voxelspacing, origin=d['origin'])
 
     def _cpu_init(self):

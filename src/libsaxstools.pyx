@@ -116,6 +116,6 @@ def calc_chi2(np.ndarray[np.int64_t, ndim=3] interspace,
 
                 # calculate a part of chi2 which is guaranteed to be bigger than 0 and the bigger the better
                 for n in range(q.shape[0]):
-                    #chi2[z, y, x] -= (tmpIq[n]*tmpIq[n] - 2*targetIq[n]*tmpIq[n])/sq[n]**2
-                    chi2[z, y, x] += ((targetIq[n] - fscale*tmpIq[n])/sq[n])**2
+                    chi2[z, y, x] -= ((fscale*tmpIq[n])**2 - 2 * targetIq[n] * fscale * tmpIq[n])/sq[n]**2
+                    #chi2[z, y, x] += ((targetIq[n] - fscale*tmpIq[n])/sq[n])**2
                 chi2[z, y, x] /= q.shape[0]
