@@ -40,7 +40,7 @@ def parse_saxsdata(infile):
         raise IOError('File has no proper SAXS data.')
     elif data.shape[-1] == 2:
         q, Iq = data.T
-	sq = ones(Iq.size, dtype=float64)
+        sq = 0.01 * Iq
     else:
         q, Iq, sq = data.T
 

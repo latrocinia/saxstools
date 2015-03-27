@@ -1,7 +1,6 @@
 from __future__ import print_function, absolute_import, division
 from sys import stdout as _stdout
 from time import time as _time
-from math import ceil
 
 import numpy as np
 
@@ -15,14 +14,13 @@ try:
 except ImportError:
     from numpy.fft import rfftn, irfftn
 
-
 from disvis import volume
 from disvis.points import dilate_points
 from disvis.libdisvis import (rotate_image3d, dilate_points_add, longest_distance)
 from saxstools.saxs_curve import scattering_curve, create_fifj_lookup_table
 from saxstools.helpers import coarse_grain
 from saxstools.libsaxstools import calc_chi2
-
+from saxstools.kernels import Kernels as saxs_Kernels
         
 try:
     import pyopencl as cl
@@ -32,6 +30,7 @@ try:
     from disvis import pyclfft
 except ImportError:
     pass
+
 
 class FullSAXS(object):
 
@@ -364,8 +363,32 @@ class FullSAXS(object):
         g['ft_clashvol'] = cl_array.zeros_like(g['ft_rcore'])
         g['ft_intervol'] = cl_array.zeros_like(g['ft_rcore'])
 
+        # allocate SAXS arrays
+        g['q'] = cl_array.to_device(q, float32array(d['q']))
+        g['targetIq'] = cl_array.to_device(q, float32array(d['targetIq']))
+        g['sq'] = cl_array.to_device(q, float32array(d['sq']))
+        g['base_Iq'] = cl_array.to_device(q, float32array(d['base_Iq']))
+        g['fifj'] = cl_array.to_device(q, float32array(d['fifj']))
+        g['rind'] = cl_array.to_device(q, d['rind'].astype(np.int32))
+        g['lind'] = cl_array.to_device(q, d['lind'].astype(np.int32))
+        g_rxyz = np.zeros((d['rxyz'].shape[0], 4), dtype=np.float32)
+        g_rxyz[:, :3] = d['rxyz'][:]
+        g_lxyz = np.zeros((d['lxyz'].shape[0], 4), dtype=np.float32)
+        g_lxyz[:, :3] = d['lxyz'][:]
+        g['rxyz'] = cl_array.to_device(q, g_rxyz)
+        g['lxyz'] = cl_array.to_device(q, g_lxyz)
+        g['rot_lxyz'] = cl_array.zeros_like(g['lxyz'])
+        g['chi2'] = cl_array.to_device(q, d['chi2'].astype(np.float32))
+        g['best_chi2'] = cl_array.to_device(q, d['best_chi2'].astype(np.float32))
+
+        g['origin'] = np.zeros(4, dtype=np.float32)
+        g['origin'][:3] = d['origin'].astype(np.float32)
+        g['voxelspacing'] = np.float32(self.voxelspacing)
+
+
         # kernels
         g['k'] = Kernels(q.context)
+        g['saxs_k'] = saxs_Kernels(q.context)
         g['k'].rfftn = pyclfft.RFFTn(q.context, d['shape'])
         g['k'].irfftn = pyclfft.iRFFTn(q.context, d['shape'])
 
@@ -400,10 +423,21 @@ class FullSAXS(object):
                     g['intervol'], g['min_interaction'],
                     g['interspace'])
 
+            g['saxs_k'].rotate_points(q, g['lxyz'], self.rotations[n], g['rot_lxyz'])
+
+            k.fill(q, g['chi2'], 0)
+            g['saxs_k'].calc_chi2(q, g['interspace'], g['q'], g['base_Iq'], 
+                    g['rind'], g['rxyz'], g['lind'], g['rot_lxyz'], g['origin'], 
+                    g['voxelspacing'], g['fifj'], g['targetIq'], g['sq'], g['chi2'])
+
+            cl_array.maximum(g['chi2'], g['best_chi2'], g['best_chi2'], queue=q)
+
             if _stdout.isatty():
                 self._print_progress(n, g['nrot'], time0)
 
         self.queue.finish()
+
+        d['best_chi2'] = g['best_chi2'].get()
 
 
 def rsurface(points, radius, shape, voxelspacing):

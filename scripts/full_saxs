@@ -2,6 +2,7 @@
 from __future__ import print_function
 from argparse import ArgumentParser
 from time import time
+from os.path import join
 
 from disvis import PDB
 from disvis.rotations import proportional_orientations, quat_to_rotmat
@@ -98,9 +99,13 @@ def main():
     q, Iq, sq = parse_saxsdata(args.data)
 
     queue = None
+    if args.gpu:
+        from disvis.helpers import get_queue
+        queue = get_queue()
+
     output = run_fullsaxs(queue, receptor, ligand, rotmat, q, Iq, sq, args)
 
-    output.tofile('chi2.mrc')
+    output.tofile(join(args.directory, 'chi2.mrc'))
 
     print('Time required for search: ', time() - time0)
 

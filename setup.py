@@ -13,7 +13,7 @@ ext_modules = [Extension("saxstools.libsaxstools",
 
 scripts = [join('scripts', 'saxs_curve'), join('scripts', 'full_saxs')]
 
-package_data = {'saxstools': [join('data', '*.npy')],
+package_data = {'saxstools': [join('data', '*.npy'), 'kernels.cl'],
                 }
 
 setup(name="saxstools",
