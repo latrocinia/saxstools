@@ -45,7 +45,6 @@ void calc_chi2(__global int *interspace,
     uint offset = nq * lid;
     uint fifj_slice = fifj_shape.s2 * fifj_shape.s1;
 
-
     for (uint i = id; i < shape.s3; i += stride) {
 
         if (interspace[i] == 0)
@@ -60,9 +59,8 @@ void calc_chi2(__global int *interspace,
         uint x = i - z*slice - y*shape.s2;
 
         // Calculate the scattering curve
-        for (uint n1 = 0; n1 < nind1; n1++) {
-
-            for (uint n2 = 0; n2 < nind2; n2++) {
+        for (uint n2 = 0; n2 < nind2; n2++) {
+            for (uint n1 = 0; n1 < nind1; n1++) {
 
                 float lx = lxyz[n2].s0 + x*voxelspacing + origin.s0;
                 float ly = lxyz[n2].s1 + y*voxelspacing + origin.s1;
@@ -73,16 +71,11 @@ void calc_chi2(__global int *interspace,
                 float dz = rxyz[n1].s2 - lz;
                 float rij = sqrt(SQUARE(dx) + SQUARE(dy) + SQUARE(dz));
 
+                uint fifj_ind = fifj_slice * rind[n1] + fifj_shape.s2 * lind[n2];
                 for (uint q1 = 0; q1 < nq; q1++) {
 
                     float qrij = q[q1] * rij;
-                    uint fifj_ind = fifj_slice * rind[n1] + fifj_shape.s2 * lind[n2] + q1;
-                    float tmp = 2 * fifj[fifj_ind];
-
-                    if (qrij > 0)
-                        tmp *= native_sin(qrij)/qrij;
-
-                    tmpIq[q1 * lws + lid] += tmp;
+                    tmpIq[q1 * lws + lid] += 2 * fifj[fifj_ind + q1] * native_sin(qrij) / qrij;
                 }
             }
         }
