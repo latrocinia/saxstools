@@ -14,7 +14,7 @@ def scattering_curve(np.ndarray[np.float64_t, ndim=1] q,
     cdef unsigned int i, j, k
     cdef unsigned int nq = q.shape[0]
     cdef unsigned int npoints = ind.shape[0]
-    cdef double rij, qrij
+    cdef double rij, qrij, tmp
 
     # first term
     for i in range(nq):
@@ -22,15 +22,15 @@ def scattering_curve(np.ndarray[np.float64_t, ndim=1] q,
             out[i] += fifj[ind[j], ind[j], i]
     
     # second expensive term
-    for i in range(1, npoints - 1):
+    for i in range(0, npoints - 1):
         for j in range(i + 1, npoints):
             rij = sqrt((xyz[i, 0] - xyz[j, 0])**2 + (xyz[i, 1] - xyz[j, 1])**2 + (xyz[i, 2] - xyz[j, 2])**2)
             for k in range(nq):
                 qrij = q[k] * rij
-                if qrij == 0:
-                    out[k] += 2 * fifj[ind[i], ind[j], k]
-                else:
-                    out[k] += 2 * fifj[ind[i], ind[j], k] * sin(qrij)/qrij
+                tmp = 2 * fifj[ind[i], ind[j], k]
+                if qrij > 0:
+                    tmp *= sin(qrij) / qrij
+                out[k] += tmp
     
 
 #cdef double dist(double* xyz1,
@@ -49,19 +49,20 @@ cdef void cross_term(np.ndarray[np.float64_t, ndim=1] q,
                ):
     
     cdef unsigned int i, j, k
-    cdef double rij, qrij
+    cdef double rij, qrij, tmp
 
     for i in range(ind1.shape[0]):
         for j in range(ind2.shape[0]):
             rij = sqrt((xyz1[i, 0] - xyz2[j, 0])**2 + (xyz1[i, 1] - xyz2[j, 1])**2 + (xyz1[i, 2] - xyz2[j, 2])**2)
-            #rij = dist(<double*> xyz1.data[i], <double*> xyz2.data[i])
 
             for k in range(q.shape[0]):
                 qrij = q[k] * rij
-                if qrij == 0:
-                    out[k] += 2 * fifj[ind1[i], ind2[j], k]
-                else:
-                    out[k] += 2 * fifj[ind1[i], ind2[j], k] * sin(qrij)/qrij
+                #tmp = 2 * fifj[ind1[i], ind2[j], k]
+                #if qrij > 0:
+                #    tmp *= sin(qrij) / qrij
+
+                #out[k] += tmp
+                out[k] += 2 * fifj[ind1[i],ind2[j], k] * sin(qrij)/qrij
 
 def calc_chi2(np.ndarray[np.int64_t, ndim=3] interspace,
              np.ndarray[np.float64_t, ndim=1] q,
@@ -85,8 +86,6 @@ def calc_chi2(np.ndarray[np.int64_t, ndim=3] interspace,
     cdef np.ndarray[np.float64_t, ndim=1] tmpIq = np.zeros(Iq.shape[0], dtype=np.float64)
 
     for z in range(chi2.shape[0]):
-
-        print z, ' / ', chi2.shape[0]
 
         for y in range(chi2.shape[1]):
 
