@@ -56,14 +56,24 @@ def coarse_grain(structure, bpr=2):
         for resi in unique(chain.data['resi']):
             residue = chain.select('resi', resi)
             resn = residue.sequence[0]
-            com = residue.center_of_mass
 
+            # determine center of mass of BB and Sidechain
             # ALA and GLY only have one bead
             if bpr == 2 and resn not in ('ALA', 'GLY'):
-                center_of_mass.append(com)
+                bbatoms = residue.select('name', 'N')
+                for name in ('CA', 'C', 'O'):
+                    bbatoms.combine(residue.select('name', name))
+                bbcom = bbatoms.center_of_mass
+
+                center_of_mass.append(bbcom)
                 beads.append('BB')
 
-            center_of_mass.append(com)
-            beads.append(resn)
+                # side chain
+                sd_atoms = residue.select('name', 'CA', '!=').select('name', 'C', '!=').select('name', 'N', '!=').select('name', 'O', '!=')
+                center_of_mass.append(sd_atoms.center_of_mass)
+                beads.append(resn)
+            else:
+                center_of_mass.append(residue.center_of_mass)
+                beads.append(resn)
 
     return beads, asarray(center_of_mass, dtype=float64)
