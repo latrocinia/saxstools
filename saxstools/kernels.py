@@ -19,7 +19,7 @@ class Kernels():
         kernel = self.kernels.calc_chi2
         workgroupsize = 16
 
-        gws = (queue.device.max_compute_units * workgroupsize * 1024,)
+        gws = (queue.device.max_compute_units * workgroupsize * 512,)
         lws = (workgroupsize,)
 
         floatsize = 4
