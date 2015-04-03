@@ -1,8 +1,11 @@
 #! env/bin/python
-from __future__ import print_function
+from __future__ import print_function, division, absolute_import
 from argparse import ArgumentParser
 from time import time
 from os.path import join
+
+from numpy import linspace
+from scipy.interpolate import interp1d
 
 from disvis import PDB
 from disvis.rotations import proportional_orientations, quat_to_rotmat
@@ -56,13 +59,26 @@ def parse_args():
             help='Directory where results are written to. '
                  'Default is current directory.')
 
-    p.add_argument('-p', '--nproc', dest='nproc', type=int, default=1,
-            help='Number of processors used during search.')
+    #p.add_argument('-p', '--nproc', dest='nproc', type=int, default=1,
+    #        help='Number of processors used during search.')
 
     p.add_argument('-g', '--gpu', dest='gpu', action='store_true',
             help='Use GPU-acceleration for search. If not available '
                  'the CPU-version will be used with the given number '
                  'of processors.')
+
+    p.add_argument('-n', '--num', dest='num', type=int, default=51,
+            help='Maximum number of data points that will be sampled. '
+                 'If data contains more points, it is resampled.')
+
+    p.add_argument('-aa', '--all-atom', dest='all_atom', action='store_true',
+           help='Calculate the scattering curves using all atoms. '
+                'This increases the required time with about 18.')
+
+    p.add_argument('-bpr', '--beads-per-residue', dest='bpr', choices=[1, 2], type=int, default=2,
+           help='Number of beads per residue in coarse-grained representation. '
+                'With 2 beads the calculation is about 18x faster than all-atom. '
+                'This increases to 60 for 1 bead per residue.')
 
     return p.parse_args()
 
@@ -74,6 +90,8 @@ def run_fullsaxs(queue, receptor, ligand, rotmat, q, Iq, sq, args):
     fs.ligand = ligand
     fs.saxsdata = (q, Iq, sq)
     fs.rotations = rotmat
+    fs.coarse_grain = not args.all_atom
+    fs.beads_per_residue = args.bpr
 
     fs.voxelspacing = args.voxelspacing
     fs.interaction_radius = args.interaction_radius
@@ -95,8 +113,26 @@ def main():
 
     quat, weights, a = proportional_orientations(args.angle)
     rotmat = quat_to_rotmat(quat)
+    print('Requested rotational sampling density: {:.2f}'.format(args.angle))
+    print('Real rotational sampling density: {:.2f}'.format(a))
+    print('Number of orientations sampled: {:d}'.format(quat.shape[0]))
 
     q, Iq, sq = parse_saxsdata(args.data)
+
+    if q.max() > 0.75:
+        print('Highest q is: {:.3f}'.format(q.max()))
+        print('Truncation to 0.750')
+        q = q[q <= 0.75]
+
+    if q.size > args.num:
+        print('Found {:d} sampling points. Resampling to 51 points.'.format(q.size))
+        f_Iq = interp1d(q, Iq)
+        f_sq = interp1d(q, sq)
+        q_resampled = linspace(q.min(), q.max(), 51, endpoint=True)
+        Iq = f_Iq(q_resampled)
+        sq = f_sq(q_resampled)
+        q = q_resampled
+
 
     queue = None
     if args.gpu:
