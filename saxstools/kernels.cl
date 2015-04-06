@@ -42,7 +42,6 @@ void calc_chi2(__global int *interspace,
     uint lws = get_local_size(0);
 
     uint slice = shape.s2 * shape.s1;
-    uint offset = nq * lid;
     uint fifj_slice = fifj_shape.s2 * fifj_shape.s1;
 
     for (uint i = id; i < shape.s3; i += stride) {
