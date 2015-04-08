@@ -2,6 +2,7 @@ from __future__ import print_function
 import numpy as np
 import os.path
 import pyopencl as cl
+from pyopencl.elementwise import ElementwiseKernel
 
 class Kernels():
 
@@ -11,6 +12,19 @@ class Kernels():
 
         self.kernel_file = os.path.join(os.path.dirname(__file__), 'kernels.cl')
         self.kernels = cl.Program(ctx, open(self.kernel_file).read()).build()
+
+        self.kernels.take_best = ElementwiseKernel(ctx,
+            """float *chi2, float *best_chi2, int *rotmat_ind, int ind""",
+            """if (chi2[i] > best_chi2[i]) {
+                   best_chi2[i] = chi2[i];
+                   rotmat_ind[i] = ind;
+               }""",
+        )
+
+
+    def take_best(self, queue, chi2, best_chi2, rotmat_ind, n):
+        status = self.kernels.take_best(chi2, best_chi2, rotmat_ind, np.int32(n))
+        return status
 
 
     def calc_chi2(self, queue, interspace, q, Iq, 
