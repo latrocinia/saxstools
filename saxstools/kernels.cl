@@ -13,7 +13,6 @@ void rotate_points(float16 rotmat, __global float4 *xyz, __global float4 *rot_xy
         rot_xyz[i].s1 = rotmat.s3 * xyz[i].s0 + rotmat.s4 * xyz[i].s1 + rotmat.s5 * xyz[i].s2;
         rot_xyz[i].s2 = rotmat.s6 * xyz[i].s0 + rotmat.s7 * xyz[i].s1 + rotmat.s8 * xyz[i].s2;
     }
-
 }
 
 
