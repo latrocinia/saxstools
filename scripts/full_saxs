@@ -139,9 +139,10 @@ def main():
         from disvis.helpers import get_queue
         queue = get_queue()
 
-    output = run_fullsaxs(queue, receptor, ligand, rotmat, q, Iq, sq, args)
+    solutions = run_fullsaxs(queue, receptor, ligand, rotmat, q, Iq, sq, args)
 
-    output.tofile(join(args.directory, 'chi2.mrc'))
+    solutions.best_lcc.tofile(join(args.directory, 'chi2.mrc'))
+    #solutions.write_pdb(ligand, fbase=join(args.directory, 'fit'))
 
     print('Time required for search: ', time() - time0)
 
