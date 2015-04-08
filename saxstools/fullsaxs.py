@@ -17,6 +17,7 @@ except ImportError:
 from disvis import volume
 from disvis.points import dilate_points
 from disvis.libdisvis import (rotate_image3d, dilate_points_add, longest_distance)
+from powerfit.solutions import Solutions
 from saxstools.saxs_curve import scattering_curve, create_fifj_lookup_table
 from saxstools.helpers import coarse_grain
 from saxstools.libsaxstools import calc_chi2
@@ -237,7 +238,10 @@ class FullSAXS(object):
         d = self.data
         ind = d['best_chi2'] > 0
         d['best_chi2'][ind] -= d['best_chi2'][ind].min()
-	return volume.Volume(d['best_chi2'], voxelspacing=self.voxelspacing, origin=d['origin'])
+
+	best_chi2 = volume.Volume(d['best_chi2'], voxelspacing=self.voxelspacing, origin=d['origin'])
+
+        return Solutions(best_chi2, self.rotations, d['rot_ind'])
 
     def _cpu_init(self):
 
@@ -289,6 +293,7 @@ class FullSAXS(object):
 
         c['chi2'] = d['chi2']
         c['best_chi2'] = d['best_chi2']
+        c['rot_ind'] = np.zeros(d['shape'], dtype=np.int32)
 
         c['Iq'] = np.zeros_like(c['targetIq'])
         c['tmplxyz'] = np.zeros_like(c['lxyz'])
@@ -320,11 +325,15 @@ class FullSAXS(object):
                     c['origin'], self.voxelspacing, 
                     c['fifj'], c['targetIq'], c['sq'], c['chi2'])
 
-	    np.maximum(c['chi2'], c['best_chi2'], c['best_chi2'])
+            ind = c['chi2'] > c['best_chi2']
+            c['best_chi2'][ind] = c['chi2'][ind]
+            c['rot_ind'][ind] = n
+
             if _stdout.isatty():
                 self._print_progress(n, c['nrot'], time0)
 
         d['best_chi2'] = c['best_chi2']
+        d['rot_ind'] = c['rot_ind']
 
     def _print_progress(self, n, total, time0):
         m = n + 1
@@ -380,6 +389,7 @@ class FullSAXS(object):
         g['rot_lxyz'] = cl_array.zeros_like(g['lxyz'])
         g['chi2'] = cl_array.to_device(q, d['chi2'].astype(np.float32))
         g['best_chi2'] = cl_array.to_device(q, d['best_chi2'].astype(np.float32))
+        g['rot_ind'] = cl_array.zeros(q, d['shape'], dtype=np.int32)
 
         g['origin'] = np.zeros(4, dtype=np.float32)
         g['origin'][:3] = d['origin'].astype(np.float32)
@@ -430,7 +440,7 @@ class FullSAXS(object):
                     g['rind'], g['rxyz'], g['lind'], g['rot_lxyz'], g['origin'], 
                     g['voxelspacing'], g['fifj'], g['targetIq'], g['sq'], g['chi2'])
 
-            cl_array.maximum(g['chi2'], g['best_chi2'], g['best_chi2'], queue=q)
+            g['saxs_k'].take_best(q, g['chi2'], g['best_chi2'], g['rot_ind'], n)
 
             if _stdout.isatty():
                 self._print_progress(n, g['nrot'], time0)
@@ -438,6 +448,7 @@ class FullSAXS(object):
         self.queue.finish()
 
         d['best_chi2'] = g['best_chi2'].get()
+        d['rot_ind'] = g['rot_ind'].get()
 
 
 def rsurface(points, radius, shape, voxelspacing):
